@@ -45,10 +45,16 @@ export default function Withdraw() {
     zkCompressed: false
   }
 
-  const feeData = [
-    { type: 'Base Fee', rate: '0.3%', description: 'Covers gas + operation' },
-    { type: 'Min Fee (SOL)', rate: '5000 lamports', description: '~$0.001' },
-    { type: 'Min Fee (ETH)', rate: '0.0001 ETH', description: '~$0.30' },
+  const tieredFeeData = [
+    { amount: '0-10 SOL/ETH', rate: '0.10%', example: '10 SOL → 0.01 SOL fee' },
+    { amount: '10-100 SOL/ETH', rate: '0.08%', example: '100 SOL → 0.08 SOL fee' },
+    { amount: '100-1000 SOL/ETH', rate: '0.06%', example: '1000 SOL → 0.6 SOL fee' },
+    { amount: '1000+ SOL/ETH', rate: '0.05%', example: '10000 SOL → 5 SOL fee' },
+  ]
+
+  const minFeeData = [
+    { chain: 'SOL', minFee: '0.0001 SOL (100,000 lamports)' },
+    { chain: 'ETH', minFee: '0.00001 ETH' },
   ]
 
   return (
@@ -105,15 +111,30 @@ export default function Withdraw() {
       </section>
 
       <section className="mb-8">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Relayer Fee Structure</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Relayer Fee Structure (Tiered Pricing)</h3>
         <Table
           columns={[
-            { key: 'type', header: 'Fee Type' },
-            { key: 'rate', header: 'Rate' },
-            { key: 'description', header: 'Description' },
+            { key: 'amount', header: 'Amount' },
+            { key: 'rate', header: 'Fee Rate' },
+            { key: 'example', header: 'Example' },
           ]}
-          data={feeData}
+          data={tieredFeeData}
         />
+        <div className="mt-4">
+          <h4 className="text-md font-semibold text-[var(--text-primary)] mb-2">Minimum Fee</h4>
+          <Table
+            columns={[
+              { key: 'chain', header: 'Chain' },
+              { key: 'minFee', header: 'Minimum Fee' },
+            ]}
+            data={minFeeData}
+          />
+        </div>
+        <div className="mt-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+          <p className="text-[var(--text-secondary)] text-sm">
+            💡 Fee is automatically deducted from withdrawal amount. User receives: <code className="text-[var(--accent-secondary)]">depositAmount - fee</code>
+          </p>
+        </div>
       </section>
 
       <section className="mb-8">

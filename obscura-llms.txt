@@ -327,12 +327,23 @@ interface DepositNote {
 4. On-chain shows: Relayer → Vault → Recipient
 5. Original depositor is NOT visible in withdrawal tx
 
-### Fee Structure
-| Fee Type | Rate | Description |
-|----------|------|-------------|
-| Base Fee | 0.3% | Covers gas + operation |
-| Min Fee (SOL) | 5000 lamports | ~$0.001 |
-| Min Fee (ETH) | 0.0001 ETH | ~$0.30 |
+### Fee Structure (Tiered Pricing)
+| Amount | Fee Rate | Example |
+|--------|----------|---------|
+| 0-10 SOL/ETH | 0.10% | 10 SOL → 0.01 SOL fee |
+| 10-100 SOL/ETH | 0.08% | 100 SOL → 0.08 SOL fee |
+| 100-1000 SOL/ETH | 0.06% | 1000 SOL → 0.6 SOL fee |
+| 1000+ SOL/ETH | 0.05% | 10000 SOL → 5 SOL fee |
+
+| Minimum Fee | Amount |
+|-------------|--------|
+| SOL | 0.0001 SOL (100,000 lamports) |
+| ETH | 0.00001 ETH |
+
+**Fee Calculation:**
+- Fee is automatically deducted from withdrawal amount
+- User receives: `depositAmount - fee`
+- Fee stays in vault (covers relayer gas + protocol revenue)
 
 ### Nullifier Tracking
 - Each nullifier can only be used ONCE

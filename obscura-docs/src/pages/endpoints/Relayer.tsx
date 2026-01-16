@@ -109,6 +109,30 @@ export default function Relayer() {
       </div>
 
       <section className="mt-12">
+        <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">Fee Structure (Tiered Pricing)</h2>
+        <Table
+          columns={[
+            { key: 'amount', header: 'Amount' },
+            { key: 'rate', header: 'Fee Rate' },
+            { key: 'example', header: 'Example' },
+          ]}
+          data={[
+            { amount: '0-10 SOL/ETH', rate: '0.10%', example: '10 SOL → 0.01 SOL fee' },
+            { amount: '10-100 SOL/ETH', rate: '0.08%', example: '100 SOL → 0.08 SOL fee' },
+            { amount: '100-1000 SOL/ETH', rate: '0.06%', example: '1000 SOL → 0.6 SOL fee' },
+            { amount: '1000+ SOL/ETH', rate: '0.05%', example: '10000 SOL → 5 SOL fee' },
+          ]}
+        />
+        <div className="mt-4 p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+          <p className="text-[var(--text-secondary)] text-sm mb-2">Minimum Fee:</p>
+          <ul className="space-y-1 text-[var(--text-secondary)] text-sm">
+            <li>• SOL: <code className="text-[var(--accent-secondary)]">0.0001 SOL</code> (100,000 lamports)</li>
+            <li>• ETH: <code className="text-[var(--accent-secondary)]">0.00001 ETH</code></li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="mt-12">
         <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">Nullifier Tracking</h2>
         <div className="p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
           <ul className="space-y-2 text-[var(--text-secondary)]">
