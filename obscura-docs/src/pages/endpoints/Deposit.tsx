@@ -51,7 +51,7 @@ export default function Deposit() {
       />
 
       <div className="mb-8 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-        <p className="text-yellow-400 font-semibold mb-2">⚠️ Important: Save Your Deposit Note!</p>
+        <p className="text-yellow-400 font-semibold mb-2">Important: Save Your Deposit Note</p>
         <p className="text-[var(--text-secondary)] text-sm">
           The <code className="text-[var(--accent-secondary)]">nullifier</code> and <code className="text-[var(--accent-secondary)]">secret</code> in the response are required for withdrawal. 
           Store them securely - they cannot be recovered if lost!

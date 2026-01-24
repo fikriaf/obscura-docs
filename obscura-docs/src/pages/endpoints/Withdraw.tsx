@@ -66,7 +66,7 @@ export default function Withdraw() {
       />
 
       <div className="mb-8 p-4 rounded-lg bg-green-500/10 border border-green-500/30">
-        <p className="text-green-400 font-semibold mb-2">🔒 True Privacy via Relayer</p>
+        <p className="text-green-400 font-semibold mb-2">True Privacy via Relayer</p>
         <p className="text-[var(--text-secondary)] text-sm">
           Withdrawals are executed by the relayer, not your wallet. On-chain, only the relayer address appears - 
           your original deposit address is never linked to the withdrawal.
@@ -132,7 +132,7 @@ export default function Withdraw() {
         </div>
         <div className="mt-4 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
           <p className="text-[var(--text-secondary)] text-sm">
-            💡 Fee is automatically deducted from withdrawal amount. User receives: <code className="text-[var(--accent-secondary)]">depositAmount - fee</code>
+            Fee is automatically deducted from withdrawal amount. User receives: <code className="text-[var(--accent-secondary)]">depositAmount - fee</code>
           </p>
         </div>
       </section>

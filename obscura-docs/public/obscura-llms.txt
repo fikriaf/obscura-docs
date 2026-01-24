@@ -10,7 +10,7 @@ Obscura is a post-quantum secure intent settlement system combining:
 - **Relayer Network** for true end-to-end privacy
 - **Nullifier-based claims** for trustless withdrawals
 
-Base URL: https://obscura-api.daemonprotocol.com
+Base URL: https://api.obscura-app.com
 
 ---
 
@@ -35,7 +35,141 @@ Basic Vault (Partial Privacy):
 - Deposit: User_A → Vault (User_A visible)
 - Withdraw: User_A calls withdraw() → Vault → Recipient
 - ⚠️ User_A visible as transaction initiator in withdrawal
+- ⚠️ Vault PDA visible in withdrawal allows graph tracing
 ```
+
+### Graph Tracing Attack
+```
+Hacker knows: Depositor wallet address
+Attack vector: Depositor → Vault PDA → Recipient
+Method: Check vault PDA transaction history
+Result: Can trace depositor to recipient
+```
+
+### Obscura Solution: Off-Chain Balance Tracking + Direct Transfer
+
+**1. Off-Chain Balance Tracking (Arcium cSPL)**
+
+Instead of storing balances on-chain, Obscura uses Arcium's confidential computing to track balances off-chain:
+
+```typescript
+interface ConfidentialBalance {
+  account: string;                    // Confidential account address
+  encryptedBalance: EncryptedValue;   // Arcium Rescue cipher
+  commitment: string;                 // Balance commitment
+  sipCommitment: string;              // SIP commitment (for lookup)
+  deposits: Array<{                   // Audit trail
+    amount: bigint;
+    txHash: string;
+    timestamp: number;
+  }>;
+  withdrawals: Array<{
+    amount: bigint;
+    txHash: string;
+    timestamp: number;
+  }>;
+}
+```
+
+**Benefits:**
+- Balances encrypted with Arcium Rescue cipher
+- No on-chain balance state
+- MPC verification without decryption
+- Audit trail for deposits/withdrawals
+
+**2. Direct Transfer Method**
+
+Instead of withdrawing from vault PDA, relayer transfers directly to recipient:
+
+```
+Traditional (Vulnerable):
+Relayer calls withdraw() → Vault PDA → Recipient
+Problem: Vault PDA visible in transaction
+
+Obscura (Secure):
+Relayer transfers directly → Recipient
+Result: NO vault PDA in transaction!
+```
+
+**Implementation:**
+```typescript
+// Direct transfer without vault PDA
+async function directTransfer(
+  recipient: PublicKey,
+  amount: bigint,
+  relayerKeypair: Keypair
+): Promise<string> {
+  const tx = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: relayerKeypair.publicKey,
+      toPubkey: recipient,
+      lamports: amount,
+    })
+  );
+  
+  return await sendAndConfirmTransaction(connection, tx, [relayerKeypair]);
+}
+```
+
+**Privacy Flow:**
+```
+1. DEPOSIT: User → Vault PDA (visible, but pooled)
+   - Balance encrypted with Arcium cSPL
+   - Stored off-chain in balance tracker
+   - SIP commitment mapped to confidential account
+
+2. VERIFICATION: Off-chain (private)
+   - Check encrypted balance via MPC
+   - Verify sufficient funds
+   - No on-chain proof needed
+
+3. WITHDRAWAL: Relayer → Recipient (direct, NO vault PDA!)
+   - Relayer transfers from own wallet
+   - Vault PDA NOT in transaction
+   - Balance updated off-chain
+
+Result: Cannot trace depositor → recipient via graph analysis
+```
+
+### Vault PDA Safety
+
+The vault PDA address is **public and safe** because:
+
+1. **One-Way Only**: Vault only receives deposits (IN), never sends withdrawals (OUT)
+2. **Shared Resource**: All users deposit to same vault (pooling)
+3. **Broken Link**: Withdrawals use direct transfer (no vault PDA in transaction)
+4. **No Tracing**: Cannot link depositor → recipient via vault history
+
+```
+Vault PDA Transaction History:
+📥 Deposits: 1000+ transactions (User → Vault)
+📤 Withdrawals: 0 transactions (Vault → Recipient)
+
+Result: Vault PDA is safe to be public!
+```
+
+### Verification Results
+
+Real blockchain test (Solana Devnet):
+- Deposit TX: `39dnonTjTqMa5P9rKucbqjLSMhQ5XSetzfdfAVyVZbYF2n3dEnxzRbZr6KnGAracf248MeJ2s8JU5e2oVNU9veqE`
+- Withdrawal TX: `3VpcHMLQdaLqLLNLSVdVBvzY4t1PEkVFuCBf22gHH8meoaPKNfdYF51bAha849sBtZ9zhz8psQ8RAGhUAbgo7zDc`
+
+Hacker Analysis Results:
+- ❌ Vault PDA NOT in withdrawal transaction
+- ❌ Withdrawal NOT in vault PDA history
+- ❌ Cannot link depositor → recipient
+- ✅ TRUE PRIVACY ACHIEVED
+
+### Privacy Comparison
+
+| Feature | Basic Vault | + Relayer | + Off-Chain Balance | + Direct Transfer |
+|---------|-------------|-----------|---------------------|-------------------|
+| Deposit visible | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| Withdrawal initiator hidden | ❌ No | ✅ Yes | ✅ Yes | ✅ Yes |
+| Vault PDA in withdrawal | ✅ Yes | ✅ Yes | ❌ No | ❌ No |
+| Graph tracing possible | ✅ Yes | ✅ Yes | ❌ No | ❌ No |
+| Balance privacy | ❌ On-chain | ❌ On-chain | ✅ Encrypted | ✅ Encrypted |
+| **TRUE Privacy** | ❌ No | ❌ No | ✅ Yes | ✅ Yes |
 
 ### Obscura Solution: Relayer Pattern
 ```
@@ -63,6 +197,128 @@ True Privacy Flow:
 
 ---
 
+## BACKEND ARCHITECTURE
+
+### Core Components
+
+**1. Balance Tracker (`balance-tracker.ts`)**
+- Off-chain encrypted balance storage
+- Maps SIP commitment → confidential account
+- Tracks deposit/withdrawal history
+- Verifies withdrawal eligibility without on-chain proof
+
+**2. Solana Settlement (`settlement.ts`)**
+- Direct transfer method (no vault PDA)
+- Arcium cSPL integration
+- Light Protocol ZK Compression
+- Multi-chain support
+
+**3. Arcium cSPL (`cspl-real.ts`)**
+- Real Rescue cipher encryption
+- Confidential account management
+- MPC-based balance verification
+- Deposit/withdrawal instructions
+
+**4. Server (`server.ts`)**
+- Deposit endpoint: Records balance in tracker
+- Withdrawal endpoint: Verifies off-chain, executes direct transfer
+- ZK Compression for Solana settlements only
+- Fee calculation and deduction
+
+### Withdrawal Flow (Backend)
+
+```typescript
+// 1. Receive withdrawal request
+POST /api/v1/withdraw
+{
+  commitment: "0x...",
+  nullifierHash: "0x...",
+  recipient: "5CBiq8BY...",
+  amount: "76767600",
+  chainId: "solana-devnet"
+}
+
+// 2. Look up confidential account
+const account = balanceTracker.getAccountBySIPCommitment(commitment);
+
+// 3. Verify balance off-chain
+const verification = await balanceTracker.verifyWithdrawal(account, amount);
+if (!verification.valid) {
+  return error("Insufficient balance");
+}
+
+// 4. Execute direct transfer (NO VAULT PDA!)
+const txHash = await solanaSettlement.directTransfer(
+  recipient,
+  amount,
+  relayerKeypair
+);
+
+// 5. Update off-chain balance
+balanceTracker.recordWithdrawal(account, amount, newEncryptedBalance, txHash);
+
+// 6. Optional: ZK Compression (Solana only)
+if (chainId === 'solana-devnet') {
+  const compressionSig = await lightProtocol.storeSettlementRecord({
+    batchId: `withdraw_${Date.now()}`,
+    chain: 'solana',
+    txHash,
+    status: 'confirmed',
+  });
+}
+
+// 7. Return result
+return {
+  success: true,
+  txHash,
+  zkCompressed: true,
+  compressionSignature: compressionSig
+};
+```
+
+### Key Design Decisions
+
+**1. Why Off-Chain Balance Tracking?**
+- On-chain balance state would be visible
+- Vault PDA in withdrawal enables graph tracing
+- Off-chain storage breaks the link
+
+**2. Why Direct Transfer?**
+- Vault PDA NOT in withdrawal transaction
+- Cannot trace depositor → recipient
+- Graph analysis attack fails
+
+**3. Why Arcium cSPL?**
+- Real encryption (Rescue cipher)
+- MPC verification without decryption
+- Confidential computing guarantees
+
+**4. Why ZK Compression Only for Solana?**
+- ETH transaction hashes on Solana would leak cross-chain correlation
+- Solana-only compression preserves privacy
+- ~1000x cost savings for Solana settlements
+
+### Privacy Guarantees
+
+**What's Hidden:**
+- ✅ Depositor identity (not in withdrawal)
+- ✅ Balance amounts (encrypted off-chain)
+- ✅ Vault PDA link (not in withdrawal transaction)
+- ✅ Withdrawal initiator (relayer, not user)
+
+**What's Visible:**
+- ⚠️ Deposit transaction (User → Vault PDA)
+- ⚠️ Withdrawal transaction (Relayer → Recipient)
+- ⚠️ Amounts (unless using fixed denominations)
+- ⚠️ Timing (unless batched with others)
+
+**What's Broken:**
+- ❌ Depositor → Recipient link (no vault PDA in withdrawal)
+- ❌ Graph tracing (vault history shows no withdrawals)
+- ❌ Balance correlation (encrypted off-chain)
+
+---
+
 ## ENDPOINTS
 
 ### 1. GET /
@@ -71,8 +327,29 @@ Get API information and available endpoints.
 Response:
 {
   "name": "Obscura API",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "description": "Post-quantum secure intent settlement API with true privacy",
+  "changelog": {
+    "0.5.1": [
+      "Minimum deposit requirement (0.0003 SOL/ETH)",
+      "Frontend validation enhancements",
+      "Loading modal UX improvements",
+      "Console security hardening"
+    ],
+    "0.5.0": [
+      "Arcium MPC integration (v0.6.3, cluster offset 456)",
+      "Confidential solver auctions",
+      "Intent encryption with real Arcium SDK",
+      "Batch optimization via MPC",
+      "Compliance disclosure (COMPLIANT mode)",
+      "Enhanced privacy status endpoint"
+    ],
+    "0.4.0": [
+      "Light Protocol ZK Compression",
+      "Relayer network for private withdrawals",
+      "Tiered fee structure"
+    ]
+  },
   "endpoints": {
     "health": "/health",
     "privacy": "/api/v1/privacy/status",
@@ -106,18 +383,76 @@ Response:
 ---
 
 ### 3. GET /api/v1/privacy/status
-Get privacy layer configuration status.
+Get privacy layer configuration status including Arcium MPC and Light Protocol ZK Compression.
 
 Response:
 {
+  "status": "operational",
+  "timestamp": "2026-01-19T12:00:00.000Z",
+  
+  "features": {
+    "pedersenCommitments": true,
+    "stealthAddresses": true,
+    "batchSettlement": true,
+    "wotsAuthorization": true,
+    "confidentialComputing": true
+  },
+  
   "arcium": {
     "configured": true,
-    "clusterOffset": "123",
-    "programId": "arcaborPMqYhZbLqPKPRXpBKyCMgH8kApNoxp4cLKg"
+    "clusterOffset": "456",
+    "version": "v0.6.3",
+    "programId": "arcaborPMqYhZbLqPKPRXpBKyCMgH8kApNoxp4cLKg",
+    "deployment": {
+      "mxeId": "abc123...",
+      "status": "deployed",
+      "participants": 3
+    },
+    "features": {
+      "intentEncryption": true,
+      "confidentialAuctions": true,
+      "batchOptimization": true,
+      "complianceDisclosure": true
+    },
+    "useCases": [
+      "Fair solver auctions (no bid visibility)",
+      "Private intent amounts (no front-running)",
+      "Encrypted batch optimization",
+      "Selective compliance disclosure"
+    ]
   },
+  
   "lightProtocol": {
     "configured": true,
-    "photonUrl": "https://devnet.helius-rpc.com"
+    "photonUrl": "configured",
+    "stateTree": "configured",
+    "features": {
+      "zkCompression": true,
+      "compressedPDAs": true,
+      "costSavings": "~1000x cheaper storage"
+    }
+  },
+  
+  "privacyLevels": {
+    "transparent": "All visible - for debugging/auditing",
+    "shielded": "Sender, recipient, amount hidden - maximum privacy",
+    "compliant": "Encrypted with viewing keys - regulatory friendly (uses Arcium sealing)"
+  },
+  
+  "chains": {
+    "solana": {
+      "configured": true,
+      "network": "devnet",
+      "programId": "GG9U34H1xXkuzvv8Heoy4UWav5vUgrQFEVwrYMi84QuE",
+      "features": ["ZK Compression", "Arcium MPC"]
+    },
+    "ethereum": {
+      "configured": true,
+      "network": "sepolia",
+      "settlement": "0x88dA9c5D9801cb33615f0A516eb1098dF1889DA9",
+      "vault": "0xc4937Ba6418eE72EDABF72694198024b5a3599CC",
+      "features": ["Pedersen Commitments", "Stealth Addresses"]
+    }
   }
 }
 
@@ -154,11 +489,13 @@ Response:
 ### 6. POST /api/v1/deposit
 Create a deposit to the privacy vault. Returns deposit note with secrets.
 
+**Minimum Deposit:** 0.0003 SOL or 0.0003 ETH
+
 Request Body (JSON):
 {
   "network": "string",        // REQUIRED: solana-devnet, sepolia
   "token": "string",          // REQUIRED: native, usdc, usdt
-  "amount": "string"          // REQUIRED: Amount as string
+  "amount": "string"          // REQUIRED: Amount as string (min: 0.0003)
 }
 
 Success Response (201):
@@ -178,7 +515,16 @@ Success Response (201):
   "vaultAddress": "6owJu2yXoPvTbM67XwmRguVRQhCADaswHkAVhVHSvoH7"
 }
 
-⚠️ IMPORTANT: User must save `nullifier` and `secret` - these are needed for withdrawal!
+Error Response (400) - Amount Too Low:
+{
+  "success": false,
+  "error": "Amount too low",
+  "details": "Minimum deposit is 0.0003 SOL"
+}
+
+⚠️ IMPORTANT: 
+- User must save `nullifier` and `secret` - these are needed for withdrawal!
+- Minimum deposit: 0.0003 SOL or 0.0003 ETH (to cover relayer fees and gas)
 
 ---
 
@@ -517,6 +863,115 @@ nullifierHash = SHA256(nullifier)
 
 ---
 
+## ARCIUM MPC (Confidential Computing)
+
+### Overview
+Obscura uses Arcium for Multi-Party Computation (MPC) to enable confidential computing on encrypted data without decryption.
+
+### Version & Configuration
+| Component | Value |
+|-----------|-------|
+| Arcium Version | v0.6.3 |
+| Cluster Offset | 456 (Solana Devnet) |
+| Program ID | arcaborPMqYhZbLqPKPRXpBKyCMgH8kApNoxp4cLKg |
+| SDK | @arcium-hq/client v0.6.1 |
+
+### Installation
+```bash
+# Install Arcium tooling
+curl --proto '=https' --tlsv1.2 -sSfL https://install.arcium.com/ | bash
+
+# Deploy MXE to devnet
+arcium deploy --cluster-offset 456 \
+  --keypair-path ~/.config/solana/id.json \
+  --rpc-url https://devnet.helius-rpc.com/?api-key=YOUR_KEY \
+  --mempool-size Tiny
+```
+
+### Use Cases in Obscura
+
+#### 1. Confidential Solver Auctions
+Solvers submit encrypted bids for intent execution. Arcium MPC computes the best solver without revealing individual bids.
+
+**Benefits:**
+- Fair price discovery (no bid sniping)
+- Prevents solver collusion
+- Protects solver strategies
+
+#### 2. Intent Encryption
+User intents (amount, token, recipient) are encrypted before batching. Only the MPC network can process them.
+
+**Benefits:**
+- Prevents front-running
+- Hides trading patterns
+- Protects user privacy
+
+#### 3. Batch Optimization
+Encrypted intents are optimized for routing and gas efficiency via MPC computation.
+
+**Benefits:**
+- Better execution prices
+- Lower gas costs
+- Privacy-preserving optimization
+
+#### 4. Compliance Disclosure (COMPLIANT Mode)
+Regulatory viewing keys are sealed via Arcium. Only authorized parties can decrypt transaction details.
+
+**Benefits:**
+- Selective disclosure for compliance
+- Maintains privacy for non-regulated users
+- Auditable without compromising privacy
+
+### Privacy Levels with Arcium
+
+| Level | Arcium Usage | Description |
+|-------|--------------|-------------|
+| `TRANSPARENT` | None | All data visible on-chain |
+| `SHIELDED` | Intent encryption | Maximum privacy, no viewing keys |
+| `COMPLIANT` | Sealed viewing keys | Encrypted with regulatory access |
+
+### Integration Flow
+
+```typescript
+// 1. Encrypt intent via Arcium
+const encryptedIntent = await arciumClient.encryptIntent({
+  tokenIn: 'SOL',
+  tokenOut: 'USDC',
+  amountIn: '5.0',
+  recipient: 'ECYks1hYG3xVRyYpwaesqGrkpj9ZQh1R6S3T3KXDrhrA',
+});
+
+// 2. Submit to aggregator
+const intentId = await aggregator.submitIntent(encryptedIntent);
+
+// 3. MPC processes encrypted batch
+const optimizedBatch = await arciumClient.optimizeBatch(encryptedIntents);
+
+// 4. Settlement on-chain (only commitments visible)
+const txHash = await executor.settleBatch(optimizedBatch);
+```
+
+### Encryption Details
+- **Cipher**: RescueCipher (Arcium's custom cipher)
+- **Key Management**: Distributed across MPC nodes
+- **Decryption**: Only possible via MPC computation (no single party can decrypt)
+
+### Cost Comparison
+| Operation | Without Arcium | With Arcium |
+|-----------|----------------|-------------|
+| Intent submission | Public | Encrypted |
+| Solver auction | Visible bids | Confidential bids |
+| Batch optimization | Public routing | Private routing |
+| Compliance | No viewing keys | Sealed viewing keys |
+
+### Viewing Arcium Transactions
+- Arcium Explorer: `https://explorer.arcium.com/tx/<mxe_id>?cluster=devnet`
+- Solana Explorer: `https://explorer.solana.com/tx/<signature>?cluster=devnet`
+
+**Note:** Encrypted data appears as ciphertext on-chain. Only MPC participants can process it.
+
+---
+
 ## ZK COMPRESSION (Light Protocol)
 
 ### Overview
@@ -574,22 +1029,34 @@ When `zkCompressed: false` (ETH or compression failed):
 
 ## CHANGELOG
 
-### v0.4.1 (Current)
-- ✅ **Cleanup**: Removed unused endpoints (stealth/scan, stealth/claim, intents, private-transfer, swap, quotes, pools)
-- ✅ **Single Wallet Mode**: Only one wallet (Solana OR EVM) can be connected at a time
-- ✅ **Dynamic UI**: Dashboard shows correct token logo (SOL/ETH) based on connected wallet
-- ✅ **Simplified API**: Only essential endpoints remain (deposit, withdraw, batches, status)
+### v0.5.1 (Current)
+- ✅ **Minimum Deposit Requirement**: 0.0003 SOL/ETH minimum to cover relayer fees and gas
+- ✅ **Frontend Validation**: Real-time validation with warning for amounts below minimum
+- ✅ **Loading Modal Enhancement**: Green spinning animation at 100% completion before close
+- ✅ **Console Security**: Removed commitment logging from frontend for enhanced privacy
+
+### v0.5.0
+- ✅ **Arcium MPC Integration**: Real confidential computing via Arcium v0.6.3 (cluster offset 456)
+- ✅ **Confidential Solver Auctions**: Fair solver selection without bid visibility
+- ✅ **Intent Encryption**: Private intent amounts prevent front-running with real Arcium SDK
+- ✅ **Batch Optimization via MPC**: Encrypted batch optimization for better routing
+- ✅ **Compliance Disclosure**: COMPLIANT mode uses Arcium sealing for regulatory viewing keys
+- ✅ **Enhanced Privacy Status**: `/api/v1/privacy/status` shows Arcium deployment status
+- ✅ **ZK Privacy Pool**: Tornado Cash style anonymity set with Merkle tree (20 levels = 1M capacity)
+- ✅ **DUAL Privacy Layer**: SIPClient (whitepaper) + ZK Pool with transparent bridge
+- ✅ **Light Protocol Compression**: Hide depositor info in compressed state (not visible on-chain)
+- ✅ **Off-Chain Balance Tracking**: Balances encrypted with Arcium cSPL, stored off-chain
+- ✅ **Direct Transfer Method**: Withdrawals bypass vault PDA (Relayer → Recipient directly)
+- ✅ **Graph Tracing Prevention**: Vault PDA NOT in withdrawal transaction
+- ✅ **Privacy Verification**: Real blockchain test confirms TRUE privacy
+- ✅ **Vault PDA Safety**: Public vault address is safe (one-way deposits only)
+- ✅ **Double Transfer Bug Fix**: Fixed duplicate withdrawal execution
+- ✅ **Balance Tracker**: Maps SIP commitment → confidential account for withdrawal lookup
 
 ### v0.4.0
-- ✅ **Security Update**: Removed `/api/v1/transfer` endpoint (auto-withdrawal risk)
-- ✅ **Security Update**: Removed Transfer, Swap, Pools menus from dashboard
-- ✅ **UI Rename**: "Deposit" menu renamed to "Privacy Transfers"
-- ✅ **Daemon Engine**: Wallet risk scanning before withdrawal (Cyclops API)
-- ✅ Manual deposit → send note → recipient withdraw flow (safer)
-- ✅ Light Protocol ZK Compression for Solana settlements
-- ✅ zkCompressed field in withdraw response
-- ✅ Photon indexer integration
-- ✅ ETH withdrawals excluded from ZK Compression (privacy)
+- ✅ **Light Protocol ZK Compression**: ~1000x cheaper state storage
+- ✅ **Relayer Network**: Private withdrawals via relayer execution
+- ✅ **Tiered Fee Structure**: Volume-based pricing (0.05% - 0.10%)
 
 ### v0.3.0
 - ✅ Status endpoints for privacy, Solana, EVM

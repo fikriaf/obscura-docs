@@ -1,10 +1,28 @@
+import { useState, useEffect } from 'react'
 import ResponseExample from '../../components/docs/ResponseExample'
 import Badge from '../../components/ui/Badge'
 
 export default function Status() {
-  const rootResponse = {
+  const [apiData, setApiData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('https://api.obscura-app.com/')
+      .then(res => res.json())
+      .then(data => {
+        setApiData(data)
+        setLoading(false)
+      })
+      .catch(err => {
+        setError(err.message)
+        setLoading(false)
+      })
+  }, [])
+
+  const rootResponse = apiData || {
     name: "Obscura API",
-    version: "0.4.1",
+    version: "Loading...",
     description: "Post-quantum secure intent settlement API with true privacy",
     endpoints: {
       health: "/health",
@@ -61,9 +79,37 @@ export default function Status() {
   return (
     <div>
       <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-4">Health & Status</h1>
-      <p className="text-[var(--text-secondary)] mb-8">
-        Endpoints for checking API health and configuration status.
+      <p className="text-[var(--text-secondary)] mb-4">
+        Endpoints for checking Privacy Vault API health and configuration status.
       </p>
+      <div className="mb-8 p-4 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-color)]">
+        <p className="text-sm text-[var(--text-muted)] mb-1">Base URL</p>
+        <code className="text-[var(--accent-secondary)] font-mono">
+          https://api.obscura-app.com
+        </code>
+      </div>
+
+      {loading && (
+        <div className="mb-8 p-4 rounded-lg bg-blue-500/10 border border-blue-500/30">
+          <p className="text-blue-400">Loading live API data...</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-8 p-4 rounded-lg bg-red-500/10 border border-red-500/30">
+          <p className="text-red-400">Failed to fetch live data: {error}</p>
+          <p className="text-[var(--text-secondary)] text-sm mt-2">Showing example responses below.</p>
+        </div>
+      )}
+
+      {!loading && !error && apiData && (
+        <div className="mb-8 p-4 rounded-lg bg-green-500/10 border border-green-500/30">
+          <p className="text-green-400 font-semibold">Live API Data</p>
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
+            Version: <code className="text-[var(--accent-secondary)]">{apiData.version}</code>
+          </p>
+        </div>
+      )}
 
       <div className="space-y-12">
         <div>
@@ -73,7 +119,7 @@ export default function Status() {
               <code className="text-lg font-mono text-[var(--text-primary)]">/</code>
             </div>
             <p className="text-[var(--text-secondary)] leading-relaxed">
-              Get API information and available endpoints.
+              Get API information and available endpoints. This data is fetched live from the API.
             </p>
           </div>
           <ResponseExample status={200} statusText="OK" body={rootResponse} />

@@ -10,35 +10,26 @@ export const navigation: NavGroup[] = [
     defaultOpen: true,
   },
   {
-    title: 'Status',
-    icon: 'activity',
-    items: [
-      { title: 'Health & Status', href: '/endpoints/status' },
-    ],
-    defaultOpen: true,
-  },
-  {
-    title: 'Privacy Transfers',
+    title: 'Privacy Vault',
     icon: 'shield',
     items: [
-      { title: 'Deposit', href: '/endpoints/deposit' },
-      { title: 'Withdraw', href: '/endpoints/withdraw' },
+      { title: 'Health & Status', href: '/vault/status' },
+      { title: 'Deposit', href: '/vault/deposit' },
+      { title: 'Withdraw', href: '/vault/withdraw' },
+      { title: 'Batch Management', href: '/vault/batches' },
+      { title: 'Relayer Service', href: '/vault/relayer' },
     ],
     defaultOpen: true,
   },
   {
-    title: 'Batches',
-    icon: 'layers',
+    title: 'Dark OTC RFQ',
+    icon: 'activity',
     items: [
-      { title: 'Batch Management', href: '/endpoints/batches' },
-    ],
-    defaultOpen: true,
-  },
-  {
-    title: 'Relayer',
-    icon: 'send',
-    items: [
-      { title: 'Relayer Service', href: '/endpoints/relayer' },
+      { title: 'Quote Request', href: '/otc/quote-request' },
+      { title: 'Submit Quote', href: '/otc/quote' },
+      { title: 'Accept Quote', href: '/otc/accept' },
+      { title: 'Private Messages', href: '/otc/messages' },
+      { title: 'Admin Whitelist', href: '/otc/admin' },
     ],
     defaultOpen: true,
   },
