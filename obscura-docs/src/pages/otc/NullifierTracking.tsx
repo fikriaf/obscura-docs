@@ -185,7 +185,7 @@ await withdrawFromVault(depositNote);`
             </p>
             <CodeBlock 
               code="Authorization: Bearer your-admin-api-key-here" 
-              language="text" 
+              language="plaintext" 
               title="Request Header" 
             />
           </div>
