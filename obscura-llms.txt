@@ -10,7 +10,7 @@ Obscura is a post-quantum secure intent settlement system combining:
 - **Relayer Network** for true endlogs.1769431551612.log-to-end privacy
 - **Nullifier-based claims** for trustless withdrawals
 
-Base URL: https://otc-api.obscura-app.com
+Base URL: https://api.obscura-app.com
 
 ---
 
